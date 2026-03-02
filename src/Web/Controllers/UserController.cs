@@ -34,32 +34,47 @@ public class UserController : ControllerBase
 
     [HttpGet]
     [Authorize]
-    [AllowAnonymous]
-    public async Task<IActionResult> GetCurrentUser() =>
-        Ok(await CreateUserInfo(User));
+    public async Task<IActionResult> GetCurrentUser()
+    {
+        var userInfo = await CreateUserInfo(User);
+        return Ok(userInfo);
+    }
 
     [Route("Logout")]
     [HttpPost]
     [Authorize]
-    [AllowAnonymous]
     public async Task<IActionResult> Logout()
     {
         await _signInManager.SignOutAsync();
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        var userId = _signInManager.Context.User.Claims.First(c => c.Type == ClaimTypes.Name);
-        var identityKey = _signInManager.Context.Request.Cookies[ConfigureCookieSettings.IdentifierCookieName];
-        _cache.Set($"{userId.Value}:{identityKey}", identityKey, new MemoryCacheEntryOptions
+
+        var userName = User?.FindFirstValue(ClaimTypes.Name) ?? User?.Identity?.Name;
+        if (string.IsNullOrEmpty(userName))
         {
-            AbsoluteExpiration = DateTime.Now.AddMinutes(ConfigureCookieSettings.ValidityMinutesPeriod)
+            _logger.LogWarning("Logout invoked but user name claim is missing.");
+            return Ok();
+        }
+
+        var identityKey = Request.Cookies[ConfigureCookieSettings.IdentifierCookieName];
+        if (string.IsNullOrEmpty(identityKey))
+        {
+            _logger.LogWarning("No identity cookie present on logout for user {UserName}", userName);
+            return Ok();
+        }
+
+        var cacheKey = $"{userName}:{identityKey}";
+        _cache.Set(cacheKey, identityKey, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpiration = DateTime.UtcNow.AddMinutes(ConfigureCookieSettings.ValidityMinutesPeriod)
         });
 
-        _logger.LogInformation("User logged out.");
+        _logger.LogInformation("User {UserName} logged out and identity key cached", userName);
         return Ok();
     }
 
     private async Task<UserInfo> CreateUserInfo(ClaimsPrincipal claimsPrincipal)
     {
-        if (claimsPrincipal.Identity == null || claimsPrincipal.Identity.Name == null || !claimsPrincipal.Identity.IsAuthenticated)
+        if (claimsPrincipal?.Identity == null || string.IsNullOrEmpty(claimsPrincipal.Identity.Name) || !claimsPrincipal.Identity.IsAuthenticated)
         {
             return UserInfo.Anonymous;
         }

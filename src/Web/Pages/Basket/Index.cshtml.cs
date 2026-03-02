@@ -5,6 +5,7 @@ using Microsoft.eShopWeb.ApplicationCore.Entities;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.Web.Interfaces;
 using Microsoft.eShopWeb.Web.ViewModels;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.eShopWeb.Web.Pages.Basket;
 
@@ -13,14 +14,17 @@ public class IndexModel : PageModel
     private readonly IBasketService _basketService;
     private readonly IBasketViewModelService _basketViewModelService;
     private readonly IRepository<CatalogItem> _itemRepository;
+    private readonly ILogger<IndexModel> _logger;
 
     public IndexModel(IBasketService basketService,
         IBasketViewModelService basketViewModelService,
-        IRepository<CatalogItem> itemRepository)
+        IRepository<CatalogItem> itemRepository,
+        ILogger<IndexModel> logger)
     {
         _basketService = basketService;
         _basketViewModelService = basketViewModelService;
         _itemRepository = itemRepository;
+        _logger = logger;
     }
 
     public BasketViewModel BasketModel { get; set; } = new BasketViewModel();
@@ -34,20 +38,23 @@ public class IndexModel : PageModel
     {
         if (productDetails?.Id == null)
         {
+            _logger.LogWarning("Add to basket called with empty productDetails");
             return RedirectToPage("/Index");
         }
 
         var item = await _itemRepository.GetByIdAsync(productDetails.Id);
         if (item == null)
         {
+            _logger.LogWarning("Product id {ProductId} not found", productDetails.Id);
             return RedirectToPage("/Index");
         }
 
         var username = GetOrSetBasketCookieAndUserName();
-        var basket = await _basketService.AddItemToBasket(username,
-            productDetails.Id, item.Price);
+        var basket = await _basketService.AddItemToBasket(username, productDetails.Id, item.Price);
 
         BasketModel = await _basketViewModelService.Map(basket);
+
+        _logger.LogInformation("Added product {ProductId} to basket for user {User}", productDetails.Id, username);
 
         return RedirectToPage();
     }
@@ -58,11 +65,16 @@ public class IndexModel : PageModel
         {
             return;
         }
+        var username = GetOrSetBasketCookieAndUserName();
+        var basketView = await _basketViewModelService.GetOrCreateBasketForUser(username);
 
-        var basketView = await _basketViewModelService.GetOrCreateBasketForUser(GetOrSetBasketCookieAndUserName());
-        var updateModel = items.ToDictionary(b => b.Id.ToString(), b => b.Quantity);
+        var updateModel = items.Where(i => i != null)
+            .ToDictionary(b => b.Id.ToString(), b => b.Quantity);
+
         var basket = await _basketService.SetQuantities(basketView.Id, updateModel);
         BasketModel = await _basketViewModelService.Map(basket);
+
+        _logger.LogInformation("Updated basket quantities for user {User} - basketId={BasketId}", username, basketView.Id);
     }
 
     private string GetOrSetBasketCookieAndUserName()

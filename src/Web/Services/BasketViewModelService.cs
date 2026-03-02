@@ -4,6 +4,8 @@ using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.ApplicationCore.Specifications;
 using Microsoft.eShopWeb.Web.Interfaces;
 using Microsoft.eShopWeb.Web.Pages.Basket;
+using Microsoft.Extensions.Logging;
+using Ardalis.GuardClauses;
 
 namespace Microsoft.eShopWeb.Web.Services;
 
@@ -13,6 +15,7 @@ public class BasketViewModelService : IBasketViewModelService
     private readonly IUriComposer _uriComposer;
     private readonly IBasketQueryService _basketQueryService;
     private readonly IRepository<CatalogItem> _itemRepository;
+    private readonly ILogger<BasketViewModelService> _logger;
 
     public BasketViewModelService(IRepository<Basket> basketRepository,
         IRepository<CatalogItem> itemRepository,
@@ -27,13 +30,17 @@ public class BasketViewModelService : IBasketViewModelService
 
     public async Task<BasketViewModel> GetOrCreateBasketForUser(string userName)
     {
-        var basketSpec = new BasketWithItemsSpecification(userName);
-        var basket = (await _basketRepository.FirstOrDefaultAsync(basketSpec));
+        Guard.Against.NullOrEmpty(userName, nameof(userName));
 
-        if (basket == null)
+        var basketSpec = new BasketWithItemsSpecification(userName);
+        var basket = await _basketRepository.FirstOrDefaultAsync(basketSpec);
+
+        if (basket is null)
         {
+            _logger?.LogInformation("Creating new basket for user {UserName}", userName);
             return await CreateBasketForUser(userName);
         }
+
         var viewModel = await Map(basket);
         return viewModel;
     }
@@ -52,14 +59,26 @@ public class BasketViewModelService : IBasketViewModelService
 
     private async Task<List<BasketItemViewModel>> GetBasketItems(IReadOnlyCollection<BasketItem> basketItems)
     {
-        var catalogItemsSpecification = new CatalogItemsSpecification(basketItems.Select(b => b.CatalogItemId).ToArray());
+        if (basketItems == null || basketItems.Count == 0)
+            return new List<BasketItemViewModel>();
+
+        var catalogIds = basketItems.Select(b => b.CatalogItemId).Distinct().ToArray();
+        var catalogItemsSpecification = new CatalogItemsSpecification(catalogIds);
         var catalogItems = await _itemRepository.ListAsync(catalogItemsSpecification);
 
-        var items = basketItems.Select(basketItem =>
-        {
-            var catalogItem = catalogItems.First(c => c.Id == basketItem.CatalogItemId);
+        // Build a dictionary for O(1) lookup
+        var catalogById = catalogItems.ToDictionary(c => c.Id);
 
-            var basketItemViewModel = new BasketItemViewModel
+        var items = new List<BasketItemViewModel>(basketItems.Count);
+        foreach (var basketItem in basketItems)
+        {
+            if (!catalogById.TryGetValue(basketItem.CatalogItemId, out var catalogItem))
+            {
+                _logger?.LogWarning("Catalog item {CatalogItemId} not found for basket item {BasketItemId}", basketItem.CatalogItemId, basketItem.Id);
+                continue;
+            }
+
+            items.Add(new BasketItemViewModel
             {
                 Id = basketItem.Id,
                 UnitPrice = basketItem.UnitPrice,
@@ -67,9 +86,8 @@ public class BasketViewModelService : IBasketViewModelService
                 CatalogItemId = basketItem.CatalogItemId,
                 PictureUrl = _uriComposer.ComposePicUri(catalogItem.PictureUri),
                 ProductName = catalogItem.Name
-            };
-            return basketItemViewModel;
-        }).ToList();
+            });
+        }
 
         return items;
     }
@@ -86,8 +104,8 @@ public class BasketViewModelService : IBasketViewModelService
 
     public async Task<int> CountTotalBasketItems(string username)
     {
+        Guard.Against.NullOrEmpty(username, nameof(username));
         var counter = await _basketQueryService.CountTotalBasketItems(username);
-
         return counter;
     }
 }

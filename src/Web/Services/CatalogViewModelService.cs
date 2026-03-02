@@ -67,12 +67,12 @@ public class CatalogViewModelService : ICatalogViewModelService
                 ActualPage = pageIndex,
                 ItemsPerPage = itemsOnPage.Count,
                 TotalItems = totalItems,
-                TotalPages = int.Parse(Math.Ceiling(((decimal)totalItems / itemsPage)).ToString())
+                TotalPages = (int)Math.Ceiling((decimal)totalItems / itemsPage)
             }
         };
 
-        vm.PaginationInfo.Next = (vm.PaginationInfo.ActualPage == vm.PaginationInfo.TotalPages - 1) ? "is-disabled" : "";
-        vm.PaginationInfo.Previous = (vm.PaginationInfo.ActualPage == 0) ? "is-disabled" : "";
+        vm.PaginationInfo.Next = (vm.PaginationInfo.ActualPage >= vm.PaginationInfo.TotalPages - 1) ? "is-disabled" : string.Empty;
+        vm.PaginationInfo.Previous = (vm.PaginationInfo.ActualPage <= 0) ? "is-disabled" : string.Empty;
 
         return vm;
     }

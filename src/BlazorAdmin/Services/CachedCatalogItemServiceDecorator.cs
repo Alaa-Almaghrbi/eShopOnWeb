@@ -24,53 +24,32 @@ public class CachedCatalogItemServiceDecorator : ICatalogItemService
         _logger = logger;
     }
 
-    public async Task<List<CatalogItem>> ListPaged(int pageSize)
+    private const string ItemsKey = "items";
+
+    private async Task<List<CatalogItem>> GetOrRefreshLocalCache(Func<Task<List<CatalogItem>>> loader)
     {
-        string key = "items";
-        var cacheEntry = await _localStorageService.GetItemAsync<CacheEntry<List<CatalogItem>>>(key);
+        var cacheEntry = await _localStorageService.GetItemAsync<CacheEntry<List<CatalogItem>>>(ItemsKey);
         if (cacheEntry != null)
         {
-            _logger.LogInformation("Loading items from local storage.");
+            _logger.LogInformation("Found local cache for {Key}. Age={AgeMinutes} minutes", ItemsKey, (DateTime.UtcNow - cacheEntry.DateCreated).TotalMinutes);
             if (cacheEntry.DateCreated.AddMinutes(1) > DateTime.UtcNow)
             {
                 return cacheEntry.Value;
             }
-            else
-            {
-                _logger.LogInformation($"Loading {key} from local storage.");
-                await _localStorageService.RemoveItemAsync(key);
-            }
+
+            _logger.LogInformation("Cache expired for {Key}, refreshing.", ItemsKey);
+            await _localStorageService.RemoveItemAsync(ItemsKey);
         }
 
-        var items = await _catalogItemService.ListPaged(pageSize);
+        var items = await loader();
         var entry = new CacheEntry<List<CatalogItem>>(items);
-        await _localStorageService.SetItemAsync(key, entry);
+        await _localStorageService.SetItemAsync(ItemsKey, entry);
         return items;
     }
 
-    public async Task<List<CatalogItem>> List()
-    {
-        string key = "items";
-        var cacheEntry = await _localStorageService.GetItemAsync<CacheEntry<List<CatalogItem>>>(key);
-        if (cacheEntry != null)
-        {
-            _logger.LogInformation("Loading items from local storage.");
-            if (cacheEntry.DateCreated.AddMinutes(1) > DateTime.UtcNow)
-            {
-                return cacheEntry.Value;
-            }
-            else
-            {
-                _logger.LogInformation($"Loading {key} from local storage.");
-                await _localStorageService.RemoveItemAsync(key);
-            }
-        }
+    public Task<List<CatalogItem>> ListPaged(int pageSize) => GetOrRefreshLocalCache(() => _catalogItemService.ListPaged(pageSize));
 
-        var items = await _catalogItemService.List();
-        var entry = new CacheEntry<List<CatalogItem>>(items);
-        await _localStorageService.SetItemAsync(key, entry);
-        return items;
-    }
+    public Task<List<CatalogItem>> List() => GetOrRefreshLocalCache(() => _catalogItemService.List());
 
     public async Task<CatalogItem> GetById(int id)
     {

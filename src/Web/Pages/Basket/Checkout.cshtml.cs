@@ -8,6 +8,7 @@ using Microsoft.eShopWeb.ApplicationCore.Exceptions;
 using Microsoft.eShopWeb.ApplicationCore.Interfaces;
 using Microsoft.eShopWeb.Infrastructure.Identity;
 using Microsoft.eShopWeb.Web.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.eShopWeb.Web.Pages.Basket;
 
@@ -20,6 +21,7 @@ public class CheckoutModel : PageModel
     private string? _username = null;
     private readonly IBasketViewModelService _basketViewModelService;
     private readonly IAppLogger<CheckoutModel> _logger;
+    private readonly ILogger<CheckoutModel> _systemLogger;
 
     public CheckoutModel(IBasketService basketService,
         IBasketViewModelService basketViewModelService,
@@ -49,12 +51,18 @@ public class CheckoutModel : PageModel
 
             if (!ModelState.IsValid)
             {
+                _systemLogger.LogWarning("Checkout posted invalid model state for user {User}", User?.Identity?.Name);
                 return BadRequest();
             }
 
-            var updateModel = items.ToDictionary(b => b.Id.ToString(), b => b.Quantity);
+            var updateModel = items?.ToDictionary(b => b.Id.ToString(), b => b.Quantity) ?? new Dictionary<string, int>();
+
             await _basketService.SetQuantities(BasketModel.Id, updateModel);
-            await _orderService.CreateOrderAsync(BasketModel.Id, new Address("123 Main St.", "Kent", "OH", "United States", "44240"));
+
+            // Create order
+            var address = new Address("123 Main St.", "Kent", "OH", "United States", "44240");
+            await _orderService.CreateOrderAsync(BasketModel.Id, address);
+
             await _basketService.DeleteBasketAsync(BasketModel.Id);
         }
         catch (EmptyBasketOnCheckoutException emptyBasketOnCheckoutException)
