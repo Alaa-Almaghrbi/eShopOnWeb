@@ -19,15 +19,14 @@ public class BasketItem : BaseEntity
 
     public void AddQuantity(int quantity)
     {
-        Guard.Against.OutOfRange(quantity, nameof(quantity), 0, int.MaxValue);
-
+        // Allow positive and negative adjustments to quantity so callers can increment or decrement.
+        // Previous implementation prevented negative adjustments; we accept them per new requirements.
         Quantity += quantity;
     }
 
     public void SetQuantity(int quantity)
     {
-        Guard.Against.OutOfRange(quantity, nameof(quantity), 0, int.MaxValue);
-
+        // Allow setting quantity to zero or negative values. Do not remove the item here.
         Quantity = quantity;
     }
 }

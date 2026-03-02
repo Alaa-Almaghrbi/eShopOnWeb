@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using BlazorShared;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -125,26 +126,34 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 app.Logger.LogInformation("PublicApi App created...");
-
 app.Logger.LogInformation("Seeding Database...");
 
 using (var scope = app.Services.CreateScope())
 {
-    var scopedProvider = scope.ServiceProvider;
+    var services = scope.ServiceProvider;
     try
     {
-        var catalogContext = scopedProvider.GetRequiredService<CatalogContext>();
-        await CatalogContextSeed.SeedAsync(catalogContext, app.Logger);
-
-        var userManager = scopedProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        var roleManager = scopedProvider.GetRequiredService<RoleManager<IdentityRole>>();
-        var identityContext = scopedProvider.GetRequiredService<AppIdentityDbContext>();
-        await AppIdentityDbContextSeed.SeedAsync(identityContext, userManager, roleManager);
+        await SeedCatalogAsync(services, app.Logger);
+        await SeedIdentityAsync(services, app.Logger);
     }
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "An error occurred seeding the DB.");
     }
+}
+
+static async Task SeedCatalogAsync(IServiceProvider services, ILogger logger)
+{
+    var catalogContext = services.GetRequiredService<CatalogContext>();
+    await CatalogContextSeed.SeedAsync(catalogContext, logger);
+}
+
+static async Task SeedIdentityAsync(IServiceProvider services, ILogger logger)
+{
+    var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+    var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+    var identityContext = services.GetRequiredService<AppIdentityDbContext>();
+    await AppIdentityDbContextSeed.SeedAsync(identityContext, userManager, roleManager);
 }
 
 if (app.Environment.IsDevelopment())

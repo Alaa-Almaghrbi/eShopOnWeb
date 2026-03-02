@@ -7,10 +7,16 @@ public class CustomSchemaFilters : ISchemaFilter
 {
     public void Apply(OpenApiSchema schema, SchemaFilterContext context)
     {
-        var excludeProperties = new[] { "CorrelationId" };
+        if (schema?.Properties == null) return;
 
-        foreach (var prop in excludeProperties)
-            if (schema.Properties.ContainsKey(prop))
-                schema.Properties.Remove(prop);
+        var propertiesToExclude = new[] { "CorrelationId" };
+
+        foreach (var propertyName in propertiesToExclude)
+        {
+            if (schema.Properties.ContainsKey(propertyName))
+            {
+                schema.Properties.Remove(propertyName);
+            }
+        }
     }
 }

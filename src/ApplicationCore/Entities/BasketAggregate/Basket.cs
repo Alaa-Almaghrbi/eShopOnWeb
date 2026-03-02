@@ -32,7 +32,9 @@ public class Basket : BaseEntity, IAggregateRoot
 
     public void RemoveEmptyItems()
     {
-        _items.RemoveAll(i => i.Quantity == 0);
+        // Preserve items even if quantity is zero or negative per new requirement.
+        // Method kept for backward compatibility but now does nothing.
+        return;
     }
 
     public void SetNewBuyerId(string buyerId)

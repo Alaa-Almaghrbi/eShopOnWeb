@@ -19,15 +19,14 @@ public class BasketService : IBasketService
         _basketRepository = basketRepository;
         _logger = logger;
     }
-
-    public async Task<Basket> AddItemToBasket(string username, int catalogItemId, decimal price, int quantity = 1)
+    public async Task<Basket> AddItemToBasket(string userName, int catalogItemId, decimal price, int quantity = 1)
     {
-        var basketSpec = new BasketWithItemsSpecification(username);
-        var basket = await _basketRepository.FirstOrDefaultAsync(basketSpec);
+        var spec = new BasketWithItemsSpecification(userName);
+        var basket = await _basketRepository.FirstOrDefaultAsync(spec);
 
-        if (basket == null)
+        if (basket is null)
         {
-            basket = new Basket(username);
+            basket = new Basket(userName);
             await _basketRepository.AddAsync(basket);
         }
 
